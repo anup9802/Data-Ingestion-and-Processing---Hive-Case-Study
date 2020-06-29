@@ -1,0 +1,352 @@
+----------'Hive Case Study' by Anup, Paresh and Vipul-----------------------------------
+----------Adding necessary commands (set up the environment) to avoid any unwanted error-------------------------
+
+ADD JAR /opt/cloudera/parcels/CDH/lib/hive/lib/hive-hcatalog-core-1.1.0-cdh5.11.2.jar;
+SET hive.exec.max.dynamic.partitions=100000;
+SET hive.exec.max.dynamic.partitions.pernode=100000;
+
+----creating our workspace
+Create database if not exists  assignment_APV;
+use  assignment_APV;
+
+----creating new external table for analysis
+create external table if not exists assignment_APV.ny_taxi_APV(
+VendorID int,
+tpep_pickup_datetime timestamp,
+tpep_dropoff_datetime timestamp,
+passenger_count int,
+trip_distance double,
+RatecodeID int,
+store_and_fwd_flag string,
+PULocationID int,
+DOLocationID int,
+payment_type int,
+fare_amount double,
+extra double,
+mta_tax double,
+tip_amount double,
+tolls_amount double,
+improvement_surcharge double,
+total_amount double
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION '/common_folder/nyc_taxi_data/'
+tblproperties ("skip.header.line.count"="2");
+
+---- Running query to check the records 
+select * from assignment_APV.ny_taxi_APV;
+-----We can clearly see our externaö table from the above command. Now let see the number of entries.
+select count(*) from assignment_APV.ny_taxi_APV;
+-----we have total 1174568 entries(rows)
+
+-----Basic Data Quality Checks
+
+-----Number of records of each provider.
+select vendorid, count(*) from assignment_APV.ny_taxi_APV
+group by vendorid;
+-----Count for Vendor-2 is 647183
+-----Count for Vendor-1 is 527385
+-----So, Vendor-2 has provided larger chunk of data
+
+-----Checking whether the records have pickup month and year other than 2017 & (Nov, Dec)
+select count(*) as num_record from assignment_APV.ny_taxi_APV 
+where substr(tpep_pickup_datetime, 1, 7) not in('2017-11','2017-12');
+-----yes, there are 14 records
+
+-----looking for null values in tpep_pickup_datetime
+select count(*) from assignment_APV.ny_taxi_APV where tpep_pickup_datetime is null;
+-----No null value
+
+-----Checking tpep_dropoff_datetime for NULL values
+select count(*) from assignment_APV.ny_taxi_APV where tpep_dropoff_datetime is null;
+-----No null value
+
+-----The drop may be in next day, i.e, in 1st Jan 2018. So, lets check such entries
+select count(*) from  assignment_APV.ny_taxi_APV tbl
+where tbl.tpep_dropoff_datetime < '2017-11-1 00:00:00.0' or tpep_dropoff_datetime>='2018-01-02 00:00:00.0';
+-----We have such 7 records
+
+-----Looking for empty cells
+select sum(case when VendorID is null then 1 else 0 end) VendorID,
+sum(case when tpep_pickup_datetime is null then 1 else 0 end) tpep_pickup_datetime,
+sum(case when tpep_dropoff_datetime is null then 1 else 0 end) tpep_dropoff_datetime,
+sum(case when passenger_count is null then 1 else 0 end) passenger_count,
+sum(case when trip_distance is null then 1 else 0 end) trip_distance,
+sum(case when RatecodeID is null then 1 else 0 end) RatecodeID,
+sum(case when store_and_fwd_flag is null then 1 else 0 end) store_and_fwd_flag,
+sum(case when PULocationID is null then 1 else 0 end) PULocationID,
+sum(case when DOLocationID is null then 1 else 0 end) DOLocationID,
+sum(case when payment_type is null then 1 else 0 end) payment_type,
+sum(case when fare_amount is null then 1 else 0 end) fare_amount,
+sum(case when extra is null then 1 else 0 end)extra,
+sum(case when mta_tax is null then 1 else 0 end)mta_tax,
+sum(case when tip_amount is null then 1 else 0 end) tip_amount,
+sum(case when tolls_amount is null then 1 else 0 end) tolls_amount,
+sum(case when improvement_surcharge is null then 1 else 0 end) improvement_surcharge,
+sum(case when total_amount is null then 1 else 0 end) total_amount 	
+from assignment_APV.ny_taxi_APV;
+------There is no empty cell
+
+------passenger_count for Nov and Dec in 2017
+select passenger_count, count(*) from assignment_APV.ny_taxi_APV 
+where substr(tpep_pickup_datetime, 1, 7) in ('2017-11','2017-12') 
+group by passenger_count;
+------passenger_count, count = 0, 6824; 2, 176871; 4, 24951; 6, 33145; 8, 3; 1, 827487; 3, 50693; 5, 54567; 7, 12; 9, 1
+------count 0 seems some mistake by driver or may some parcel was shipped
+
+------ max and min values in the columns
+select max(VendorID) max_VendorID, min(VendorID) min_VendorID,
+max(tpep_pickup_datetime) max_tpep_pickup_datetime,	min(tpep_pickup_datetime) min_tpep_pickup_datetime,
+max(passenger_count) max_passenger_count, min(passenger_count) min_passenger_count,
+max(tpep_dropoff_datetime) max_tpep_dropoff_datetime, min(tpep_dropoff_datetime) min_tpep_dropoff_datetime,
+max(trip_distance) max_trip_distance, min(trip_distance) min_trip_distance,
+max(RatecodeID) max_RatecodeID,	min(RatecodeID) min_RatecodeID,
+max(store_and_fwd_flag) max_store_and_fwd_flag,	min(store_and_fwd_flag) min_store_and_fwd_flag,
+max(PULocationID) max_PULocationID,	min(PULocationID) min_PULocationID,
+max(DOLocationID) max_DOLocationID,	min(DOLocationID) min_DOLocationID,
+max(payment_type) max_payment_type,	min(payment_type) min_payment_type,
+max(fare_amount) max_fare_amount, min(fare_amount) min_fare_amount,
+max(extra) max_extra, min(extra) min_extra,
+max(mta_tax) max_mta_tax, min(mta_tax) min_mta_tax,
+max(tip_amount) max_tip_amount,	min(tip_amount) min_tip_amount,
+max(tolls_amount) max_tolls_amount,	min(tolls_amount) min_tolls_amount,
+max(improvement_surcharge) max_improvement_surcharge, min(improvement_surcharge) min_improvement_surcharge,
+max(total_amount) max_total_amount,	min(total_amount) min_total_amount		
+from assignment_APV.ny_taxi_APV;
+
+------RateCodeID for for Nov and Dec in 2017
+select RateCodeID, count(*) from assignment_APV.ny_taxi_APV 
+where substr(tpep_pickup_datetime, 1, 7) in ('2017-11','2017-12')
+group by RateCodeID;
+------We can see that along with possible ratecodeid(1,2,3,4,5 & 6), we have 99 (count = 9) and surely this is not a valid number
+------So, this 99 might be the another way of presenting the null values
+
+------vendorid-wise analysis
+select vendorid, count(*) 
+from  assignment_APV.ny_taxi_APV 
+where ratecodeid=99
+group by vendorid;
+------vendorid-1 has such 8 entries and vendor-2 has only one
+
+-----Checking for suspicious activity for vendor-1
+select * from  assignment_APV.ny_taxi_APV tbl 
+where (tbl.tpep_dropoff_datetime < '2017-11-1 00:00:00.0' or tpep_dropoff_datetime>='2018-01-02 00:00:00.0')
+and vendorid=1;
+-----there is one drop off time in 2019
+
+-----Checking for suspicious activity for vendor-1
+select * from  assignment_APV.ny_taxi_APV tbl 
+where (tbl.tpep_dropoff_datetime < '2017-11-1 00:00:00.0' or tpep_dropoff_datetime>='2018-01-02 00:00:00.0')
+and vendorid=2;
+-----there are total 6 entries. Two are from Oct 2017, 1 from 2009, two fom 2008 and another one from 2003.
+
+-----drop of time greater or equal to pick up time---a serious data quality issue
+select count(*) from assignment_APV.ny_taxi_APV tbl 
+where tbl.tpep_dropoff_datetime <= tbl.tpep_pickup_datetime;
+-----there are such 6555 entries
+
+-----Checking are_amount column with negative or zero amount
+select count(*) from assignment_APV.ny_taxi_APV tbl
+where substr(tpep_pickup_datetime, 1, 7) in ('2017-11','2017-12') and fare_amount <= 0;
+-----total 870 such record
+
+-----vendorid-wise analysis
+select distinct(vendorid) from assignment_APV.ny_taxi_APV tbl
+where substr(tpep_pickup_datetime, 1, 7) in('2017-11','2017-12') and fare_amount <= 0;
+-----this fare_amount <= 0 is coming from both the vendors
+
+-----checking high fare_amount
+select count(*) from assignment_APV.ny_taxi_APV where fare_amount > 500;
+-----we have only one such entry
+
+-----negative value in the extra column
+select count(*) from assignment_APV.ny_taxi_APV
+where substr(tpep_pickup_datetime, 1, 7) in ('2017-11','2017-12') and extra < 0;
+-----we have such 286 entries
+
+-----Creating ORC partition table----------------------------------------------
+Create external table if not exists assignment_APV.Orc_APV(
+tpep_pickup_datetime timestamp,
+tpep_dropoff_datetime timestamp,
+passenger_count int,
+trip_distance double,
+RatecodeID int,
+store_and_fwd_flag string,
+PULocationID int,
+DOLocationID int,
+payment_type int,
+fare_amount double,
+extra double,
+mta_tax double,
+tip_amount double,
+tolls_amount double,
+improvement_surcharge double,
+total_amount double
+)
+partitioned by (Mnth int, VendorID int)
+stored as orc location '/user/anup9802_gmail/Assignment_APV'
+tblproperties ("orc.compress"="SNAPPY");
+
+------inserting data to the Orc_APV
+insert overwrite table assignment_APV.Orc_APV partition(Mnth, VendorID)
+select 
+tpep_pickup_datetime,
+tpep_dropoff_datetime,
+trip_distance,
+passenger_count,
+RatecodeID,
+store_and_fwd_flag,
+DOLocationID,
+PULocationID,
+payment_type,
+extra,
+mta_tax,
+fare_amount,
+tip_amount,
+tolls_amount,
+improvement_surcharge,
+total_amount,
+month(tpep_pickup_datetime) Mnth,
+VendorID
+from  assignment_APV.ny_taxi_APV tbl
+where (tbl.tpep_pickup_datetime >='2017-11-1 00:00:00.0' and tpep_pickup_datetime < '2018-01-01 00:00:00.0') and
+(tbl.tpep_dropoff_datetime >= '2017-11-1 00:00:00.0' and tpep_dropoff_datetime < '2018-01-02 00:00:00.0') and
+(tbl.tpep_dropoff_datetime > tbl.tpep_pickup_datetime) and
+(passenger_count not in (0, 192)) and
+(trip_distance > 0) and 
+(ratecodeid != 99) and
+(fare_amount > 0 ) and
+(extra >= 0) and
+(mta_tax  in (0, 0.5)) and 
+((tip_amount >= 0 and Payment_type = 1) or (Payment_type != 1 and tip_amount = 0)) and
+(tolls_amount >= 0) and
+(improvement_surcharge in (0, 0.30)) and
+(total_amount > 0) and
+year(tpep_pickup_datetime) = 2017 and 
+month(tpep_pickup_datetime) in (11,12);
+
+-----Checking the total number of rows in the Orc_APV
+select count(*) from assignment_APV.Orc_APV;
+-----Total count = 1157932
+-----Number of rows in the original dataset = 1174568
+
+-----Analysis-I-------------------------------------------------------------------
+
+-----1.Compare the overall average fare per trip for November and December.
+select round(avg(fare_amount), 2) as avg_fare, round(avg(total_amount),2) as avg_tot_fare, mnth 
+from assignment_APV.Orc_APV 
+group by mnth;
+-----both the avg_fare in Nov and Dec is 0.32
+-----avg_tot_fare for Nov and Dec are 16.36 & 16.09, respectively
+
+-----2.Explore the ‘number of passengers per trip’ - how many trips are made by each level of ‘Passenger_count’? Do most people travel solo or with other people?
+select passenger_count, round((count(*)*100/1157932), 4) cnt
+from assignment_APV.Orc_APV 
+group by passenger_count
+order by cnt desc;
+-----top 5 picks are:
+-----passanger_count-------cnt(%)---
+-----------1--------------34.1478----------so, solo rides are most common
+-----------0--------------25.4412
+-----------2--------------15.2769
+-----------3--------------7.2627
+-----------4--------------4.0239
+
+------3.Which is the most preferred mode of payment?
+select payment_type, count(*) as no_trans from assignment_APV.Orc_APV
+group by payment_type 
+order by no_trans desc;
+------payment_type = 1 (credit card) is the most common, with no_trans = 782123
+------the second prefrred option in payment_type = 2 (cash), no_trans = 369992
+
+------4.What is the average tip paid per trip? Compare the average tip with the 25th, 50th and 75th percentiles 
+------and comment whether the ‘average tip’ is a representative statistic (of the central tendency) of ‘tip amount paid’. 
+------Hint: You may use percentile_approx(DOUBLE col, p): Returns an approximate pth percentile of a numeric column 
+------(including floating point types) in the group.
+select round(avg(tip_amount), 2) as avg_tip_per_trip,
+percentile_approx(tip_amount, 0.25) as avg_25_per,  
+percentile_approx(tip_amount, 0.50) as avg_50_per,
+percentile_approx(tip_amount, 0.75) as avg_75_per
+from assignment_APV.Orc_APV;
+------avg_tip_per_trip = 1.85, avg_25_per = 0, avg_50_per = 1.36, avg_75_per = 2.45
+------The statistics above tells that theavg_tip_per_trip is not representative of central tendency
+
+------5.Explore the ‘Extra’ (charge) variable - what fraction of total trips have an extra charge is levied?
+select extra, round((count(*)*100/1157932), 4) cnt from 
+(select case 
+when extra > 0 
+then 1 
+else 0 end  extra
+from assignment_APV.Orc_APV) tbl
+group by extra
+order by cnt desc;
+------extra---------cnt(%)---
+-------0------------99.7-----
+-------1------------0.299----
+----So, majority of the cases no extra charge applied
+
+-----Analysis-II-------------------------------------------------------------------
+
+-----1.What is the correlation between the number of passengers on any given trip, 
+-----and the tip paid per trip? Do multiple travellers tip more compared to solo travellers? Hint: Use CORR(Col_1, Col_2)
+select corr(passenger_count, tip_amount) as corl
+from assignment_APV.Orc_APV;
+-----So, passanger_count and tip_amount are positively correlated with a correlation coefficient of 0.582
+select corr(is_solo, tip_amount) from
+(select case when passenger_count = 1 then 1 else 0 end is_solo, tip_amount 
+from assignment_APV.Orc_APV) tbl;
+-----We can see a slight negative correlation (-0.169) here
+
+-----2.Segregate the data into five segments of ‘tip paid’: [0-5), [5-10), [10-15) , [15-20) and >=20.
+-----Calculate the percentage share of each bucket (i.e. the fraction of trips falling in each bucket).
+select tip_amt_grp, concat(round(count(*) / cast(sum(count(*)) over() as float) *100, 2),'%') 
+as prcnt_of_total from
+(select case
+when tip_amount < 5 then "Between 0 and 5"
+when tip_amount >= 5 and tip_amount < 10 then "Between 5 and 10"
+when tip_amount >= 10 and tip_amount < 15 then "Between 10 and 15"
+when tip_amount >= 15 and tip_amount < 20 then "Between 15 and 20"
+else "Greater than or equal to 20" end as tip_amt_grp 
+from assignment_APV.Orc_APV) tbl
+group by tip_amt_grp
+order by tip_amt_grp;
+
+------3.Which month has a greater average ‘speed’ - November or December? Note that the variable 
+------‘speed’ will have to be derived from other metrics. Hint: You have columns for distance and time.
+select mnth, round(avg(trip_distance/((unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))/3600)), 2) avg_speed
+from assignment_APV.Orc_APV
+group by mnth
+order by avg_speed desc;
+-----mnth-----avg_speed---
+------12--------11.95-----
+------11--------11.49-----
+------Dec is little faster than Nov
+
+------4.Analyse the average speed of the most happening days of the year, i.e. 31st December 
+------(New year’s eve) and 25th December (Christmas) and compare it with the overall average. 
+select is_holiday, round(avg(speed), 2) avg_speed from 
+(select case when ((tpep_pickup_datetime >= '2017-12-25 00:00:00.0' and tpep_pickup_datetime < '2017-12-26 00:00:00.0') 
+or (tpep_pickup_datetime >= '2017-12-31 00:00:00.0' and tpep_pickup_datetime < '2018-01-01 00:00:00.0')) then 1 else 0 end is_holiday, 
+trip_distance/((unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))/3600) speed
+from assignment_APV.Orc_APV) tbl
+group by is_holiday
+order by avg_speed desc;
+------as expected in holiday avg_speed is higher; it is 15.47 but in normal days it is 11.64
+------now, lets compare christmas vs new year
+select is_christmas, round(avg(speed), 2) avg_speed from 
+(select case when (tpep_pickup_datetime >= '2017-12-25 00:00:00.0' and tpep_pickup_datetime < '2017-12-26 00:00:00.0') then 1 else 0 end is_christmas, 
+trip_distance/((unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))/3600) speed
+from assignment_APV.Orc_APV) tbl
+group by is_christmas
+order by avg_speed desc;
+------during christmas avg_speed is 15.82
+select is_newyear, round(avg(speed), 2) avg_speed from 
+(select case when (tpep_pickup_datetime >= '2017-12-31 00:00:00.0' and tpep_pickup_datetime < '2018-01-01 00:00:00.0') then 1 else 0 end is_newyear, 
+trip_distance/((unix_timestamp(tpep_dropoff_datetime) - unix_timestamp(tpep_pickup_datetime))/3600) speed
+from assignment_APV.Orc_APV) tbl
+group by is_newyear
+order by avg_speed desc;
+------during new year avg_speed is 15.26
+------During christmas average speed is higher than the same during new year.
+--------------------------------end-----------------------------------------------------------------------------------------------------------
